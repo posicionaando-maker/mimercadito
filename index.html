@@ -191,7 +191,7 @@
     </div>
   </div>
 
-  <!-- MODAL Editar Producto -->
+  <!-- MODALES -->
   <div id="modalEditar" class="modal">
     <div class="modal-content">
       <h3>✏️ Editar producto</h3>
@@ -207,7 +207,6 @@
     </div>
   </div>
 
-  <!-- MODAL Ajuste rápido de stock -->
   <div id="modalAjuste" class="modal">
     <div class="modal-content">
       <h3>📦 Ajustar stock</h3>
@@ -220,7 +219,6 @@
     </div>
   </div>
 
-  <!-- MODAL Nuevo Producto (desde gestión) -->
   <div id="modalNuevoProductoGestion" class="modal">
     <div class="modal-content">
       <h3>✨ Nuevo producto</h3>
@@ -289,6 +287,7 @@
     renderCarrito();
     cambiarPanel('vender');
     
+    // Forzar limpieza de Service Workers
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(registrations => {
         registrations.forEach(r => r.unregister());
@@ -355,7 +354,7 @@
       menuDiv.classList.remove('mostrar');
     };
     document.getElementById('btnCerrarReportes').onclick = () => cambiarPanel('vender');
-    document.getElementById('actualizarReportes').onclick = actualizarReportes;
+    document.getElementById('actualizarReportes').onclick = () => actualizarReportes();
     document.getElementById('filtroMes').value = new Date().toISOString().slice(0,7);
 
     // Ventas
@@ -364,13 +363,13 @@
     document.getElementById('transferencia').addEventListener('input', verificarPagoTransferencia);
     document.getElementById('buscar').addEventListener('input', () => renderProductos());
 
-    // Modales de edición y ajuste
+    // Modales
     document.getElementById('btnGuardarEdicion').onclick = guardarEdicionProducto;
     document.getElementById('btnCancelarEdicion').onclick = cerrarModalEditar;
     document.getElementById('btnConfirmarAjuste').onclick = confirmarAjusteStock;
     document.getElementById('btnCancelarAjuste').onclick = cerrarModalAjuste;
     
-    // Nuevo producto desde gestión
+    // Nuevo producto
     document.getElementById('btnNuevoProductoGestion').onclick = () => {
       document.getElementById('modalNuevoProductoGestion').style.display = 'flex';
     };
@@ -672,42 +671,73 @@
     renderCarrito();
   }
 
-  // ====================== REPORTES ======================
+  // ====================== REPORTES CORREGIDOS ======================
   function actualizarReportes() {
+    console.log("Actualizando reportes...");
+    console.log("Ventas totales:", ventas.length);
+    
     const ahora = new Date();
+    
+    // 1. Ventas de HOY (desde las 00:00 hasta ahora)
     const hoyInicio = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate()).getTime();
+    const ventasHoy = ventas.filter(v => new Date(v.fecha).getTime() >= hoyInicio);
+    const totalHoy = ventasHoy.reduce((s, v) => s + v.total, 0);
+    document.getElementById('ventasHoy').innerHTML = `<strong>$${totalHoy.toFixed(2)}</strong><br>${ventasHoy.length} ventas`;
+    
+    // 2. Ventas de la SEMANA (últimos 7 días)
     const semanaInicio = hoyInicio - 6 * 24 * 60 * 60 * 1000;
-    const mes = document.getElementById('filtroMes').value;
-    const [year, month] = mes ? mes.split('-') : [ahora.getFullYear(), ahora.getMonth()+1];
+    const ventasSemana = ventas.filter(v => new Date(v.fecha).getTime() >= semanaInicio);
+    const totalSemana = ventasSemana.reduce((s, v) => s + v.total, 0);
+    document.getElementById('ventasSemana').innerHTML = `<strong>$${totalSemana.toFixed(2)}</strong><br>${ventasSemana.length} ventas`;
     
-    let ventasHoy = ventas.filter(v => new Date(v.fecha).getTime() >= hoyInicio);
-    let ventasSemana = ventas.filter(v => new Date(v.fecha).getTime() >= semanaInicio);
-    let ventasMes = ventas.filter(v => {
-      const d = new Date(v.fecha);
-      return d.getFullYear() == year && (d.getMonth()+1) == parseInt(month);
-    });
+    // 3. Ventas del MES seleccionado en el filtro
+    const mesSeleccionado = document.getElementById('filtroMes').value;
+    let ventasMes = [];
+    let totalMes = 0;
+    let gananciaMes = 0;
     
-    const totalHoy = ventasHoy.reduce((s,v) => s+v.total, 0);
-    const totalSemana = ventasSemana.reduce((s,v) => s+v.total, 0);
-    const totalMes = ventasMes.reduce((s,v) => s+v.total, 0);
-    const gananciaMes = ventasMes.reduce((s,v) => s+v.ganancia, 0);
-    const totalGeneral = ventas.reduce((s,v) => s+v.total, 0);
+    if (mesSeleccionado) {
+      const [year, month] = mesSeleccionado.split('-');
+      ventasMes = ventas.filter(v => {
+        const d = new Date(v.fecha);
+        return d.getFullYear() == year && (d.getMonth() + 1) == parseInt(month);
+      });
+      totalMes = ventasMes.reduce((s, v) => s + v.total, 0);
+      gananciaMes = ventasMes.reduce((s, v) => s + (v.ganancia || 0), 0);
+    }
+    document.getElementById('ventasMes').innerHTML = `<strong>$${totalMes.toFixed(2)}</strong><br>${ventasMes.length} ventas`;
+    document.getElementById('gananciaNeta').innerHTML = `<strong>$${gananciaMes.toFixed(2)}</strong>`;
     
-    document.getElementById('ventasHoy').innerHTML = `$${totalHoy.toFixed(2)}<br>${ventasHoy.length} ventas`;
-    document.getElementById('ventasSemana').innerHTML = `$${totalSemana.toFixed(2)}<br>${ventasSemana.length} ventas`;
-    document.getElementById('ventasMes').innerHTML = `$${totalMes.toFixed(2)}<br>${ventasMes.length} ventas`;
-    document.getElementById('gananciaNeta').innerHTML = `$${gananciaMes.toFixed(2)}`;
-    document.getElementById('totalGeneral').innerHTML = `$${totalGeneral.toFixed(2)}<br>${ventas.length} ventas`;
+    // 4. Total GENERAL (histórico)
+    const totalGeneral = ventas.reduce((s, v) => s + v.total, 0);
+    document.getElementById('totalGeneral').innerHTML = `<strong>$${totalGeneral.toFixed(2)}</strong><br>${ventas.length} ventas`;
     
+    // 5. Producto más vendido (de todo el histórico)
     const prodCount = {};
     ventas.forEach(v => {
-      v.items.forEach(item => { prodCount[item.nombre] = (prodCount[item.nombre] || 0) + item.cantidad; });
+      if (v.items && Array.isArray(v.items)) {
+        v.items.forEach(item => {
+          const nombre = item.nombre;
+          prodCount[nombre] = (prodCount[nombre] || 0) + item.cantidad;
+        });
+      }
     });
-    const top = Object.entries(prodCount).sort((a,b) => b[1]-a[1])[0];
-    document.getElementById('topProducto').innerHTML = top ? `${top[0]}: ${top[1]} uds` : 'Sin ventas';
+    const top = Object.entries(prodCount).sort((a, b) => b[1] - a[1])[0];
+    if (top) {
+      document.getElementById('topProducto').innerHTML = `<strong>${top[0]}</strong><br>${top[1]} unidades vendidas`;
+    } else {
+      document.getElementById('topProducto').innerHTML = 'Sin ventas aún';
+    }
     
+    // 6. Stock bajo (productos con cantidad ≤ 3)
     const bajoStock = inventario.productos.filter(p => p.cantidad <= 3);
-    document.getElementById('stockBajoLista').innerHTML = bajoStock.length ? bajoStock.map(p => `⚠️ ${p.nombre} (${p.cantidad})`).join(', ') : '✅ Todo en orden';
+    if (bajoStock.length > 0) {
+      document.getElementById('stockBajoLista').innerHTML = bajoStock.map(p => `⚠️ ${p.nombre}: ${p.cantidad} uds`).join('<br>');
+    } else {
+      document.getElementById('stockBajoLista').innerHTML = '✅ Todos los productos con stock suficiente';
+    }
+    
+    console.log("Reportes actualizados correctamente");
   }
 </script>
 
